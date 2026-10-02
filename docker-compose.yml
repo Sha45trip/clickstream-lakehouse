@@ -126,6 +126,24 @@ services:
       - ./sql:/opt/sql:ro
 
   # ------------------------------------------------------------------ Airflow 3 (scheduler + dag-processor + api-server in one container)
+  # Own Postgres 16: Airflow 3.3 is tested with PostgreSQL 14-18, and the shared 'postgres' service is 13 (pinned for Hive).
+  airflow-db:
+    image: postgres:16-alpine
+    container_name: airflow-db
+    restart: unless-stopped
+    networks: [lake]
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   airflow:
     build: ./docker/airflow
     image: lakehouse/airflow:1.0
@@ -135,7 +153,7 @@ services:
     networks: [lake]
     ports: ["8080:8080"]               # Airflow UI
     depends_on:
-      postgres: { condition: service_healthy }
+      airflow-db: { condition: service_healthy }
       namenode: { condition: service_started }
       resourcemanager: { condition: service_started }
       hive-metastore: { condition: service_started }
@@ -147,10 +165,10 @@ services:
       AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
       AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://localhost:8080/execution/
       # DEV-ONLY secrets and no login. Never reuse these or expose this port outside your laptop.
-      AIRFLOW__CORE__FERNET_KEY: "Ki6M-SQy7FfDxXN2KB3t4zjmqhxz-B7m8wr_eRRzQoc="
+      AIRFLOW__CORE__FERNET_KEY: "Qf5ed9YHImGp8UCoX3rzmvPh6OyNqi6L-9jo7QrrzJM="
       AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
       AIRFLOW__API_AUTH__JWT_SECRET: "dev-only-jwt-secret-dev-only-jwt-secret-dev-only-jwt-secret-0123456789"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://hive:hivepass@postgres:5432/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
       AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL: "30"
     volumes:
       - ./dags:/opt/airflow/dags:ro
@@ -170,3 +188,4 @@ volumes:
   kafka-data:
   pg-data:
   airflow-logs:
+  airflow-db-data:

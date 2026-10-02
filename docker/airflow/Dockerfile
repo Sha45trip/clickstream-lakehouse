@@ -9,7 +9,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && python3 -m venv /opt/af-venv \
  && /opt/af-venv/bin/pip install --no-cache-dir --upgrade pip \
- && /opt/af-venv/bin/pip install --no-cache-dir "apache-airflow==${AIRFLOW_VERSION}" psycopg2-binary \
+ && /opt/af-venv/bin/pip install --no-cache-dir "apache-airflow[postgres]==${AIRFLOW_VERSION}" psycopg2-binary \
       --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-3.10.txt"
 
 COPY start.sh /start.sh

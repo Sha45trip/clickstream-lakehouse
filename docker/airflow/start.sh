@@ -1,30 +1,7 @@
 #!/usr/bin/env bash
 # Starts the three Airflow components in one container (lean setup for a laptop).
+# The metadata database (airflow-db, Postgres 16) is created by its own container; compose waits for it to be healthy.
 set -uo pipefail
-
-echo ">> waiting for Postgres and creating the 'airflow' database if needed"
-/opt/af-venv/bin/python - <<'PY'
-import sys, time
-import psycopg2
-conn = None
-for _ in range(40):
-    try:
-        conn = psycopg2.connect(host="postgres", user="hive", password="hivepass", dbname="metastore")
-        break
-    except Exception as e:
-        time.sleep(3)
-if conn is None:
-    sys.exit("postgres not reachable")
-conn.autocommit = True
-cur = conn.cursor()
-cur.execute("SELECT 1 FROM pg_database WHERE datname = 'airflow'")
-if cur.fetchone() is None:
-    cur.execute("CREATE DATABASE airflow")
-    print("created database airflow")
-else:
-    print("database airflow already exists")
-PY
-[ $? -eq 0 ] || exit 1
 
 echo ">> migrating the Airflow metadata database"
 airflow db migrate || exit 1
