@@ -20,6 +20,7 @@ def get_spark(app_name: str) -> SparkSession:
     """Cluster-wide settings come from conf/spark/spark-defaults.conf; the two below are
     repeated so the jobs also work when run locally without that file."""
     return (SparkSession.builder.appName(app_name)
+            .config("spark.sql.session.timeZone", "UTC")      # event times are UTC; never depend on the JVM zone
             .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
             .config("spark.hadoop.hive.exec.dynamic.partition.mode", "nonstrict")
             .enableHiveSupport()

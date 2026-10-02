@@ -22,7 +22,8 @@ EVENT_SCHEMA = StructType([StructField(n, t) for n, t in [
     ("category", StringType()), ("price", DoubleType()), ("quantity", IntegerType()),
     ("order_id", StringType()), ("order_value", DoubleType()), ("device_type", StringType()),
     ("os", StringType()), ("browser", StringType()), ("country", StringType()),
-    ("referrer", StringType()), ("utm_source", StringType()), ("utm_campaign", StringType())]])
+    ("referrer", StringType()), ("utm_source", StringType()), ("utm_campaign", StringType()),
+    ("_corrupt_record", StringType())]])
 
 EVENT_COLS = ["event_id", "event_ts", "user_id", "event_type", "page_url", "product_id", "category",
               "price", "quantity", "order_id", "order_value", "device_type", "os", "browser",
@@ -63,8 +64,9 @@ def main():
 
     # ---- parse
     p = (bronze.withColumn("j", F.from_json("raw_payload", EVENT_SCHEMA))
-               .withColumn("_malformed", F.col("j").isNull())
+               .withColumn("_malformed", F.col("j._corrupt_record").isNotNull())
                .select("raw_payload", "source_ref", "ingest_ts", "ingest_date", "_malformed", "j.*")
+               .drop("_corrupt_record")
                .withColumn("event_ts_raw", F.col("event_ts"))
                .withColumn("event_ts", F.to_timestamp("event_ts_raw")))
 
