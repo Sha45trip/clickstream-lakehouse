@@ -1,0 +1,13 @@
+data/landing/
+data/raw/
+data/sample/
+*.csv
+*.csv.gz
+*.zip
+data/*.gz
+__pycache__/
+*.pyc
+.venv/
+metastore_db/
+derby.log
+spark-warehouse/

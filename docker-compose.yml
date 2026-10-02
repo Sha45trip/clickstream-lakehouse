@@ -1,0 +1,137 @@
+name: clickstream-lakehouse
+
+x-hadoop: &hadoop
+  build: ./docker/base
+  image: lakehouse/hadoop-spark:1.0
+  restart: unless-stopped
+  networks: [lake]
+
+services:
+  # ------------------------------------------------------------------ HDFS
+  namenode:
+    <<: *hadoop
+    container_name: namenode
+    hostname: namenode
+    command: ["namenode"]
+    ports: ["9870:9870"]               # NameNode UI
+    volumes:
+      - nn-data:/data/hdfs
+      - ./conf/hadoop:/etc/hadoop/conf:ro
+      - ./data:/host-data:ro           # generator output -> `make load-landing`
+
+  datanode:
+    <<: *hadoop
+    container_name: datanode
+    hostname: datanode
+    command: ["datanode"]
+    ports: ["9864:9864"]               # DataNode UI
+    depends_on: [namenode]
+    volumes:
+      - dn-data:/data/hdfs
+      - ./conf/hadoop:/etc/hadoop/conf:ro
+
+  # ------------------------------------------------------------------ YARN
+  resourcemanager:
+    <<: *hadoop
+    container_name: resourcemanager
+    hostname: resourcemanager
+    command: ["resourcemanager"]
+    ports: ["8088:8088"]               # YARN UI
+    depends_on: [namenode]
+    volumes:
+      - ./conf/hadoop:/etc/hadoop/conf:ro
+
+  nodemanager:
+    <<: *hadoop
+    container_name: nodemanager
+    hostname: nodemanager
+    command: ["nodemanager"]
+    ports: ["8042:8042"]               # NodeManager UI
+    depends_on: [resourcemanager, datanode]
+    volumes:
+      - nm-data:/data/yarn
+      - ./conf/hadoop:/etc/hadoop/conf:ro
+
+  # ------------------------------------------------------------------ Kafka (KRaft, single broker)
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: kafka
+    hostname: kafka
+    restart: unless-stopped
+    networks: [lake]
+    ports: ["29092:29092"]             # host-side producers (generator) use localhost:29092
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,HOST://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+
+  # ------------------------------------------------------------------ Hive Metastore (+ Postgres backing DB)
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    restart: unless-stopped
+    networks: [lake]
+    environment:
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: hivepass
+      POSTGRES_DB: metastore
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hive -d metastore"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  hive-metastore:
+    build: ./docker/hive-metastore
+    image: lakehouse/hive-metastore:1.0
+    container_name: hive-metastore
+    hostname: hive-metastore
+    restart: unless-stopped
+    networks: [lake]
+    ports: ["9083:9083"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      namenode: { condition: service_started }
+    volumes:
+      - ./conf/hive-metastore/hive-site.xml:/opt/hive/conf/hive-site.xml:ro
+
+  # ------------------------------------------------------------------ Spark client (driver runs here, executors on YARN)
+  spark-client:
+    <<: *hadoop
+    container_name: spark-client
+    hostname: spark-client
+    command: ["client"]
+    ports: ["4040:4040"]               # Spark driver UI (while a job runs)
+    depends_on: [namenode, resourcemanager, hive-metastore, kafka]
+    environment:
+      LAKE_ROOT: hdfs://namenode:8020/lakehouse
+    volumes:
+      - ./conf/hadoop:/etc/hadoop/conf:ro
+      - ./conf/spark:/opt/spark/conf:ro
+      - ./jobs:/opt/jobs:ro
+      - ./sql:/opt/sql:ro
+
+networks:
+  lake:
+    name: lake
+
+volumes:
+  nn-data:
+  dn-data:
+  nm-data:
+  kafka-data:
+  pg-data:
