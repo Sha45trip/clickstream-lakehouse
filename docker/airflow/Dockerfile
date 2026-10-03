@@ -12,6 +12,9 @@ RUN apt-get update \
  && /opt/af-venv/bin/pip install --no-cache-dir "apache-airflow[postgres]==${AIRFLOW_VERSION}" psycopg2-binary \
       --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-3.10.txt"
 
+# psycopg2 for the SYSTEM python3 (the one Spark drivers use): the publish job writes to Postgres from the driver.
+RUN pip3 install --no-cache-dir psycopg2-binary==2.9.13
+
 COPY start.sh /start.sh
 RUN chmod +x /start.sh \
  && mkdir -p /opt/airflow/dags /opt/airflow/logs \

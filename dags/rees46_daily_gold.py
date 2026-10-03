@@ -70,4 +70,10 @@ with DAG(
         pool="yarn",
     )
 
-    check_silver >> build_gold >> check_gold
+    publish_serving = BashOperator(
+        task_id="publish_serving",
+        bash_command=SPARK_LOCAL + " " + JOBS + "/13_publish_serving.py --from-date {{ ds }} --to-date {{ ds }}",
+        pool="yarn",
+    )
+
+    check_silver >> build_gold >> check_gold >> publish_serving
