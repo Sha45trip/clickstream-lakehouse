@@ -19,8 +19,8 @@ De-duplication
     (off-heap, spills to disk) so it does not eat the executor heap.
   * GUARANTEE AND ITS LIMIT: a duplicate is removed only if its first copy is still inside the window,
     i.e. the first copy's event_time is within 24 h of the newest event_time seen so far. A replay of events
-    older than that passes through as "new" rows. (Verified: first-time events that arrive late are KEPT,
-    not dropped.) In production, pair this with a periodic batch job that removes older duplicates.
+    older than that passes through as "new" rows. (Tested in isolation: a first-time event older than that window
+    is DROPPED silently; one inside the window is kept.) In production, pair this with a periodic batch job that removes older duplicates.
 """
 import argparse
 from pyspark.sql import functions as F
